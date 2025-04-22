@@ -1,6 +1,8 @@
 import yaml
 import requests
 import time
+import sys # move to imports, was out of place before
+from urllib.parse import urlparse # import for better URL parsing
 from collections import defaultdict
 
 # Function to load configuration from the YAML file
@@ -11,12 +13,12 @@ def load_config(file_path):
 # Function to perform health checks
 def check_health(endpoint):
     url = endpoint['url']
-    method = endpoint.get('method')
-    headers = endpoint.get('headers')
-    body = endpoint.get('body')
+    method = endpoint.get('method', 'GET') # adding defaults
+    headers = endpoint.get('headers', {})
+    body = endpoint.get('body', None)
 
     try:
-        response = requests.request(method, url, headers=headers, json=body)
+        response = requests.request(method, url, headers=headers, json=body, timeout=0.5) # need to add 500ms timeout as per instructions
         if 200 <= response.status_code < 300:
             return "UP"
         else:
@@ -30,8 +32,12 @@ def monitor_endpoints(file_path):
     domain_stats = defaultdict(lambda: {"up": 0, "total": 0})
 
     while True:
+        start_time = time.time()
+        
         for endpoint in config:
-            domain = endpoint["url"].split("//")[-1].split("/")[0]
+            parsed_url = urlparse(endpoint["url"])
+            domain = parsed_url.hostname # ignore port number 
+        
             result = check_health(endpoint)
 
             domain_stats[domain]["total"] += 1
@@ -44,11 +50,13 @@ def monitor_endpoints(file_path):
             print(f"{domain} has {availability}% availability percentage")
 
         print("---")
-        time.sleep(15)
+        spent_time = time.time() - start_time
+        sleep_time = 15 - spent_time
+        if sleep_time > 0:
+            time.sleep(sleep_time) # change how long we sleep based on how long the checks took
 
 # Entry point of the program
 if __name__ == "__main__":
-    import sys
 
     if len(sys.argv) != 2:
         print("Usage: python monitor.py <config_file_path>")
